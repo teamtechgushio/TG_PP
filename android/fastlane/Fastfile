@@ -1,0 +1,59 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+require 'time'
+default_platform(:android)
+
+platform :android do
+  desc "Submit a new Beta Build to Crashlytics Beta"
+  lane :distribute_to_firebase do
+    tag_prefix = 'android/dev'
+    is_releasable = analyze_commits(match: "#{tag_prefix}*")
+
+    if is_releasable
+      next_version = lane_context[SharedValues::RELEASE_NEXT_VERSION]
+      next_tag = "#{tag_prefix}/#{next_version}";
+      release_notes = conventional_changelog(title: next_tag, format: 'plain')
+      
+      print release_notes
+      build_android_app(
+        gradle_path: "./gradlew",
+        task: "assemble",
+        build_type: "Release",
+        properties: {
+          'vcode' => "#{Time.now().to_i}",
+          'vname' => next_version
+        }
+      )
+  
+      firebase_app_distribution(
+          firebase_cli_token: ENV['FIREBASE_TOKEN'],
+          app: ENV['FIREBASE_ANDROID_APP_ID'],
+          groups: ENV["FIREBASE_TESTER_GROUPS"],
+          release_notes: release_notes
+      )
+
+      add_git_tag(tag: next_tag)
+      push_git_tags
+    else 
+      print "Not releasable"
+    end
+  end
+
+  # desc "Deploy a new version to the Google Play"
+  # lane :deploy do
+  #   gradle(task: "clean assembleRelease")
+  #   upload_to_play_store
+  # end
+end
